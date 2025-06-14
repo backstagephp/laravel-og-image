@@ -57,7 +57,7 @@ class OgImage
 
     public function getStorageImageFileExists(string $signature): bool
     {
-        if(config('og-image.debug') === true) {
+        if (config('og-image.debug') === true) {
             return false;
         }
 
@@ -69,7 +69,9 @@ class OgImage
     {
         return $this->getStorageDisk()
             ->get($this->getStorageImageFilePath($signature));
-    }    public function getStorageViewFileName(string $signature): string
+    }
+
+    public function getStorageViewFileName(string $signature): string
     {
         return $signature.'.blade.php';
     }
@@ -132,19 +134,29 @@ class OgImage
         return $parameters['signature'];
     }
 
-    public function createImageFromParams(array $parameters): ?string
+    public function createImageFromParams(array $parameters, ?string $template = null, bool $returnImage = false): ?string
     {
         $signature = $this->getSignature($parameters);
 
         if (! OgImage::getStorageImageFileExists($signature)) {
-            $html = View::make('og-image::template', $parameters)
-                ->render();
+            if (! empty($template) && View::exists($template)) {
+                $html = View::make($template, $parameters)
+                    ->render();
+            } else {
+                $html = View::make('og-image::template', $parameters)
+                    ->render();
+            }
 
             OgImage::saveImage($html, $signature);
         }
 
-        return Storage::disk(config('og-image.storage.disk'))
-            ->url(OgImage::getStorageImageFilePath($signature));
+        if (! $returnImage) {
+            return Storage::disk(config('og-image.storage.disk'))
+                ->url(OgImage::getStorageImageFilePath($signature));
+        } else {
+            return Storage::disk(config('og-image.storage.disk'))
+                ->get(OgImage::getStorageImageFilePath($signature));
+        }
     }
 
     public function saveImage(string $html, string $filename): void
@@ -196,7 +208,7 @@ class OgImage
                 ->render();
         }
 
-        if($request->route()->getName() == 'og-image.html') {
+        if ($request->route()->getName() == 'og-image.html') {
             return response($html, 200, [
                 'Content-Type' => 'text/html',
             ]);

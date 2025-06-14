@@ -45,6 +45,17 @@ sudo xattr -rd com.apple.quarantine /Applications/Chromium.app # Remove quaranti
 
 ### On Debian/Ubuntu
 
+For Ubuntu 22.04+ (Note: you'll need to update the environment variable of `CHROME_PATH` to `chomium-browser`)
+
+```bash
+sudo add-apt-repository ppa:savoury1/ffmpeg4
+sudo add-apt-repository ppa:savoury1/chromium
+sudo apt-get update
+sudo apt-get install chromium-browser
+```
+
+For Ubuntu everything below 22.04
+
 ```bash
 # Install chromium from PPA instead of snap, because of permission issues with snapd version
 sudo add-apt-repository ppa:saiarcot895/chromium-dev -y
