@@ -217,7 +217,9 @@ class OgImage
         OgImage::saveImage($html, $request->signature);
 
         return response(OgImage::getStorageImageFileData($request->signature), 200, [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0',
             'Content-Type' => OgImage::getImageMimeType(),
+            'Pragma' => 'no-cache',
         ]);
     }
 
