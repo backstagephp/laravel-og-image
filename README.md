@@ -75,6 +75,7 @@ Sometimes it's necessary to point the package to a custom path where the binary 
 # macOS or Debian/Ubuntu
 which chrome # probably /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome
 which chromium # probably /opt/homebrew/bin/chromium
+which chromium-browser # Debian/Ubuntu
 
 # Windows
 where chrome # probably C:\Program Files\Google\Chrome\Application\chrome.exe
