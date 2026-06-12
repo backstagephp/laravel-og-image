@@ -36,7 +36,7 @@ First install Google Chrome or Chromium, as you need the binary to use it as a h
 ```bash
 # Google Chrome
 brew install --cask google-chrome 
-sudo xattr -rd com.apple.quarantine /Applications/Chrome.app # Remove quarantine macOS protection mechanism
+sudo xattr -rd com.apple.quarantine /Applications/Google\ Chrome.app # Remove quarantine macOS protection mechanism
 
 # Chromium
 brew install chromium
