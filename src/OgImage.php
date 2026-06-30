@@ -127,11 +127,11 @@ class OgImage
 
         $url = $this->url($parameters);
 
-        $url = parse_url($url);
+        $query = parse_url($url, PHP_URL_QUERY);
 
-        parse_str($url['query'], $parameters);
+        parse_str((string) $query, $parameters);
 
-        return $parameters['signature'];
+        return $parameters['signature'] ?? '';
     }
 
     public function createImageFromParams(array $parameters, ?string $template = null, bool $returnImage = false): ?string
