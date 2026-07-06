@@ -3,6 +3,11 @@ name: "Update Changelog"
 on:
   release:
     types: [released]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing release tag to (re)write into the changelog, e.g. v1.2.0"
+        required: true
 
 permissions:
   contents: write
@@ -17,11 +22,24 @@ jobs:
         with:
           ref: main
 
+      - name: Fetch release notes
+        id: release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          {
+            echo 'body<<OG_IMAGE_RELEASE_NOTES_EOF'
+            gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json body --jq .body
+            echo 'OG_IMAGE_RELEASE_NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
       - name: Update Changelog
         uses: stefanzweifel/changelog-updater-action@v1
         with:
-          latest-version: ${{ github.event.release.name }}
-          release-notes: ${{ github.event.release.body }}
+          latest-version: ${{ github.event.release.name || inputs.version }}
+          release-notes: ${{ github.event.release.body || steps.release.outputs.body }}
 
       - name: Commit updated CHANGELOG
         uses: stefanzweifel/git-auto-commit-action@v7
