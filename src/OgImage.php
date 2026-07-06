@@ -138,25 +138,26 @@ class OgImage
     {
         $signature = $this->getSignature($parameters);
 
-        if (! OgImage::getStorageImageFileExists($signature)) {
-            if (! empty($template) && View::exists($template)) {
-                $html = View::make($template, $parameters)
-                    ->render();
-            } else {
-                $html = View::make('og-image::template', $parameters)
-                    ->render();
-            }
-
-            OgImage::saveImage($html, $signature);
+        if (OgImage::getStorageImageFileExists($signature) && ! ($returnImage && config('og-image.debug') === true)) {
+            return $returnImage
+                ? Storage::disk(config('og-image.storage.disk'))->get(OgImage::getStorageImageFilePath($signature))
+                : Storage::disk(config('og-image.storage.disk'))->url(OgImage::getStorageImageFilePath($signature));
         }
 
-        if (! $returnImage) {
-            return Storage::disk(config('og-image.storage.disk'))
-                ->url(OgImage::getStorageImageFilePath($signature));
-        } else {
-            return Storage::disk(config('og-image.storage.disk'))
-                ->get(OgImage::getStorageImageFilePath($signature));
+        $view = (! empty($template) && View::exists($template)) ? $template : 'og-image::template';
+        $html = View::make($view, $parameters)->render();
+
+        // Debug mode: never persist. Return the bytes in memory when the caller
+        // wants the image; there is no stored file to return a URL for otherwise.
+        if (config('og-image.debug') === true) {
+            return $returnImage ? OgImage::takeScreenshot($html) : null;
         }
+
+        OgImage::saveImage($html, $signature);
+
+        return $returnImage
+            ? Storage::disk(config('og-image.storage.disk'))->get(OgImage::getStorageImageFilePath($signature))
+            : Storage::disk(config('og-image.storage.disk'))->url(OgImage::getStorageImageFilePath($signature));
     }
 
     public function saveImage(string $html, string $filename): void
@@ -167,10 +168,18 @@ class OgImage
 
         OgImage::ensureDirectoryExists('images');
 
-        $this->takeScreenshot($html, $filename);
+        $this->takeScreenshot(
+            $html,
+            storage_path('app/public/'.OgImage::getStorageImageFilePath($filename)),
+        );
     }
 
-    public function takeScreenshot(string $html, string $filename): void
+    /**
+     * Render $html to an image. When $path is given the image is written there;
+     * when it is null the raw image bytes are returned instead (no disk write),
+     * which debug mode uses to avoid persisting anything locally.
+     */
+    public function takeScreenshot(string $html, ?string $path = null): ?string
     {
         $binary = (string) config('og-image.chrome.path');
 
@@ -188,11 +197,17 @@ class OgImage
 
         $screenshot = $page->screenshot();
 
-        $screenshot->saveToFile(
-            path: $path = storage_path('app/public/'.OgImage::getStorageImageFilePath($filename)),
-        );
+        $data = null;
+
+        if ($path === null) {
+            $data = base64_decode($screenshot->getBase64());
+        } else {
+            $screenshot->saveToFile($path);
+        }
 
         $browser->close();
+
+        return $data;
     }
 
     public function getResponse(Request $request): Response
@@ -214,6 +229,18 @@ class OgImage
             ]);
         }
 
+        $headers = [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0',
+            'Content-Type' => OgImage::getImageMimeType(),
+            'Pragma' => 'no-cache',
+        ];
+
+        // Debug mode: render on every request and return the bytes in memory,
+        // without persisting anything to disk.
+        if (config('og-image.debug') === true) {
+            return response(OgImage::takeScreenshot($html), 200, $headers);
+        }
+
         // Signed requests are cached by their signature. Unsigned requests are
         // only allowed in local development (see the controller); there is no
         // signature to key the cache on, so derive a stable filename from the
@@ -223,11 +250,7 @@ class OgImage
 
         OgImage::saveImage($html, $filename);
 
-        return response(OgImage::getStorageImageFileData($filename), 200, [
-            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0',
-            'Content-Type' => OgImage::getImageMimeType(),
-            'Pragma' => 'no-cache',
-        ]);
+        return response(OgImage::getStorageImageFileData($filename), 200, $headers);
     }
 
     /**
