@@ -214,6 +214,10 @@ class OgImage
             ]);
         }
 
+        if (! is_string($request->signature) || $request->signature === '') {
+            abort(404);
+        }
+
         OgImage::saveImage($html, $request->signature);
 
         return response(OgImage::getStorageImageFileData($request->signature), 200, [
