@@ -214,17 +214,39 @@ class OgImage
             ]);
         }
 
-        if (! is_string($request->signature) || $request->signature === '') {
-            abort(404);
-        }
+        // Signed requests are cached by their signature. Unsigned requests are
+        // only allowed in local development (see the controller); there is no
+        // signature to key the cache on, so derive a stable filename from the
+        // request parameters instead. This keeps local previews working without
+        // passing a null filename to saveImage().
+        $filename = OgImage::getRequestImageFilename($request);
 
-        OgImage::saveImage($html, $request->signature);
+        OgImage::saveImage($html, $filename);
 
-        return response(OgImage::getStorageImageFileData($request->signature), 200, [
+        return response(OgImage::getStorageImageFileData($filename), 200, [
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0',
             'Content-Type' => OgImage::getImageMimeType(),
             'Pragma' => 'no-cache',
         ]);
+    }
+
+    /**
+     * Resolve the cache filename (without extension) for an incoming image
+     * request: the signed-URL signature when present, otherwise a deterministic
+     * hash of the request parameters (used for unsigned local-development
+     * requests).
+     */
+    public function getRequestImageFilename(Request $request): string
+    {
+        if (is_string($request->signature) && $request->signature !== '') {
+            return $request->signature;
+        }
+
+        $parameters = $request->except('signature');
+
+        ksort($parameters);
+
+        return hash('sha256', json_encode($parameters));
     }
 
     private function injectJs(): string
