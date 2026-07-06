@@ -2,6 +2,7 @@
 
 namespace Backstage\OgImage\Laravel\Tests;
 
+use Backstage\OgImage\Laravel\Facades\OgImage;
 use Backstage\OgImage\Laravel\OgImageServiceProvider;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 
@@ -19,7 +20,7 @@ abstract class TestCase extends BaseTestCase
     protected function getPackageAliases($app)
     {
         return [
-            'OgImage' => \Backstage\OgImage\Laravel\Facades\OgImage::class,
+            'OgImage' => OgImage::class,
         ];
     }
 }
