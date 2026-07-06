@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-og-image` will be documented in this file.
 
+## v1.2.0 - 2026-07-06
+
+### What's Changed
+
+* Skip disk persistence entirely in debug mode by @markvaneijk in https://github.com/backstagephp/laravel-og-image/pull/46
+
+**Full Changelog**: https://github.com/backstagephp/laravel-og-image/compare/v1.1.3...v1.2.0
+
 ## v0.3.0 - 2023-03-09
 
 ### What’s changed
