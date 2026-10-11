@@ -2,6 +2,18 @@
 
 All notable changes to `laravel-og-image` will be documented in this file.
 
+## v1.2.1 - 2026-10-11
+
+### What's Changed
+
+* Grant contents write permission to the changelog workflow by @markvaneijk in https://github.com/backstagephp/laravel-og-image/pull/47
+* Allow manually dispatching the changelog workflow by @markvaneijk in https://github.com/backstagephp/laravel-og-image/pull/48
+* Bump actions/checkout from 5 to 6 by @dependabot[bot] in https://github.com/backstagephp/laravel-og-image/pull/42
+* Bump dependabot/fetch-metadata from 2.3.0 to 2.5.0 by @dependabot[bot] in https://github.com/backstagephp/laravel-og-image/pull/43
+* Create the storage folders on the configured disk by @markvaneijk in https://github.com/backstagephp/laravel-og-image/pull/53
+
+**Full Changelog**: https://github.com/backstagephp/laravel-og-image/compare/v1.2.0...v1.2.1
+
 ## v1.2.0 - 2026-07-06
 
 ### What's Changed
