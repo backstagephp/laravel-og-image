@@ -8,7 +8,6 @@ use HeadlessChromium\Page;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
@@ -95,8 +94,11 @@ class OgImage
 
     public function ensureDirectoryExists(string $folder = ''): void
     {
-        if (! File::isDirectory($this->getStoragePath($folder))) {
-            File::makeDirectory($this->getStoragePath($folder), 0777, true);
+        // The storage path is relative to the configured disk, not to the working directory.
+        $disk = $this->getStorageDisk();
+
+        if (! $disk->directoryExists($this->getStoragePath($folder))) {
+            $disk->makeDirectory($this->getStoragePath($folder));
         }
     }
 
@@ -170,7 +172,7 @@ class OgImage
 
         $this->takeScreenshot(
             $html,
-            storage_path('app/public/'.OgImage::getStorageImageFilePath($filename)),
+            $this->getStorageDisk()->path(OgImage::getStorageImageFilePath($filename)),
         );
     }
 
