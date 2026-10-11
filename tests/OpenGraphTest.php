@@ -2,6 +2,7 @@
 
 use Backstage\OgImage\Laravel\Facades\OgImage;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 $hasChrome = fn (): bool => ! empty(shell_exec('command -v chromium')) || ! empty(shell_exec('command -v google-chrome')) || ! empty(shell_exec('command -v google-chrome-stable'));
 
@@ -45,4 +46,26 @@ it('derives a stable filename from params when unsigned', function (): void {
     $b = OgImage::getRequestImageFilename($request);
 
     expect($a)->toBeString()->not->toBeEmpty()->and($a)->toBe($b);
+});
+
+it('creates its storage folders on the configured disk, not in the working directory', function (): void {
+    // Regression: the folders were made with a path relative to the working directory, so an
+    // empty og-images/ folder appeared wherever PHP ran (public/ when serving requests).
+    Storage::fake(config('og-image.storage.disk'));
+
+    $cwd = getcwd();
+    $workingDirectory = sys_get_temp_dir().'/og-image-'.uniqid();
+    mkdir($workingDirectory);
+    chdir($workingDirectory);
+
+    try {
+        OgImage::ensureDirectoryExists('images');
+    } finally {
+        chdir($cwd);
+    }
+
+    expect(Storage::disk(config('og-image.storage.disk'))->directoryExists(OgImage::getStoragePath('images')))->toBeTrue()
+        ->and(is_dir($workingDirectory.'/'.OgImage::getStoragePath('images')))->toBeFalse();
+
+    rmdir($workingDirectory);
 });
