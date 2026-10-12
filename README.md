@@ -15,6 +15,7 @@ Just add the meta tag with our url to the head of your page. The package will th
 -   [Usage](#usage)
     -   [Passing extra attributes](#passing-extra-attributes)
     -   [Clearing cached images](#clearing-cached-images)
+    -   [Using a running Chrome (faster)](#using-a-running-chrome-faster)
 -   [Changelog](#changelog)
 -   [Contributing](#contributing)
 -   [Security Vulnerabilities](#security-vulnerabilities)
@@ -115,6 +116,11 @@ return [
     'height' => 630,
 
     'chrome' => [
+        // Connect to an already running Chrome instead of launching one for every image, which is
+        // faster. Its DevTools address, e.g. http://127.0.0.1:9222 (or a ws://.../devtools/browser/...
+        // URL), started with --remote-allow-origins=http://127.0.0.1 (see the README). Falls back to
+        // launching Chrome from the path below when it can't be reached.
+        'url' => env('CHROME_URL'),
         'path' => env('CHROME_PATH', 'chromium'),
         'flags' => [
             // '--disable-dev-shm-usage',
@@ -235,6 +241,55 @@ All generated open graph images are cached by default. If you want to remove the
 ```bash
 php artisan og-image:clear-cache
 ```
+
+### Using a running Chrome (faster)
+
+By default a new Chrome is launched for every image and closed again afterwards. Starting Chrome is a large part of the time it takes to generate an image, especially on a small server. Instead, you can keep one Chrome running as a service and let the package connect to it, so only a tab is opened and closed per image. Assets like fonts are then also cached between images.
+
+Point the package to the DevTools address of the running Chrome in your `.env`:
+
+```dotenv
+CHROME_URL=http://127.0.0.1:9222
+```
+
+A `ws://127.0.0.1:9222/devtools/browser/...` URL works too, but that URL changes every time Chrome starts, so the `http://` address is easier. When the running Chrome can't be reached, the exception is reported and the package falls back to launching Chrome from `chrome.path`, so images keep working when the service is down.
+
+Chrome has to be started with `--remote-allow-origins=http://127.0.0.1`, otherwise it refuses the connection. The `chrome.flags` from the config only apply when the package launches Chrome itself; for a running Chrome, pass them on its command line.
+
+For example with systemd (`/etc/systemd/system/chrome-og-image.service`, then `systemctl enable --now chrome-og-image`):
+
+```ini
+[Unit]
+Description=Headless Chrome for Open Graph images
+After=network.target
+
+[Service]
+User=www-data
+ExecStart=/usr/bin/chromium --headless --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --remote-allow-origins=http://127.0.0.1 --user-data-dir=/tmp/chrome-og-image --no-first-run --no-default-browser-check --hide-scrollbars --mute-audio --disable-dev-shm-usage --use-angle=swiftshader about:blank
+PrivateTmp=true
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Or with Supervisor:
+
+```ini
+[program:chrome-og-image]
+command=/usr/bin/chromium --headless --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --remote-allow-origins=http://127.0.0.1 --user-data-dir=/tmp/chrome-og-image --no-first-run --no-default-browser-check --hide-scrollbars --mute-audio --disable-dev-shm-usage --use-angle=swiftshader about:blank
+user=www-data
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+```
+
+> [!WARNING]
+> Only bind the DevTools port to `127.0.0.1` and never expose it (or use `--remote-allow-origins=*`): anyone who can reach it has full control of the browser, and can for example open internal URLs, read local files and run JavaScript.
+
+[chrome-headless-shell](https://developer.chrome.com/blog/chrome-headless-shell) (from Chrome for Testing, e.g. `npx @puppeteer/browsers install chrome-headless-shell@stable`) starts faster and uses less memory than the full Chrome, which makes it a good fit both for the service and for `CHROME_PATH`.
 
 ## Changelog
 

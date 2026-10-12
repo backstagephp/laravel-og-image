@@ -3,15 +3,20 @@
 namespace Backstage\OgImage\Laravel;
 
 use Backstage\OgImage\Laravel\Http\Controllers\OgImageController;
+use HeadlessChromium\Browser;
+use HeadlessChromium\Browser\ProcessAwareBrowser;
 use HeadlessChromium\BrowserFactory;
+use HeadlessChromium\Exception\BrowserConnectionFailed;
 use HeadlessChromium\Page;
 use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\ComponentAttributeBag;
+use Throwable;
 
 class OgImage
 {
@@ -183,16 +188,111 @@ class OgImage
      */
     public function takeScreenshot(string $html, ?string $path = null): ?string
     {
+        $browser = $this->getBrowser();
+        $page = null;
+
+        try {
+            $page = $browser->createPage();
+
+            return $this->renderScreenshot($page, $html, $path);
+        } finally {
+            $this->releaseBrowser($browser, $page);
+        }
+    }
+
+    /**
+     * The browser to take the screenshot with: the running Chrome configured in
+     * og-image.chrome.url when it can be reached, so only a tab is opened per
+     * image, otherwise a newly launched Chrome. A Chrome service that is down
+     * is reported but never breaks image generation.
+     */
+    public function getBrowser(): Browser
+    {
+        $url = (string) config('og-image.chrome.url');
+
+        if ($url !== '') {
+            try {
+                return $this->connectToBrowser($url);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
+
+        return $this->launchBrowser();
+    }
+
+    /**
+     * Connect to an already running Chrome, which saves launching and closing
+     * a browser process for every image.
+     */
+    public function connectToBrowser(string $url): Browser
+    {
+        return BrowserFactory::connectToBrowser($this->getBrowserWebSocketUrl($url));
+    }
+
+    /**
+     * Resolve the browser's DevTools WebSocket URL. A ws:// URL is used as is;
+     * for an http:// address (e.g. http://127.0.0.1:9222) Chrome is asked for
+     * it, as the URL contains an id that changes every time Chrome starts.
+     */
+    public function getBrowserWebSocketUrl(string $url): string
+    {
+        if (preg_match('#^wss?://#i', $url)) {
+            return $url;
+        }
+
+        $webSocketUrl = Http::connectTimeout(2)
+            ->timeout(5)
+            ->get(rtrim($url, '/').'/json/version')
+            ->throw()
+            ->json('webSocketDebuggerUrl');
+
+        if (! is_string($webSocketUrl) || $webSocketUrl === '') {
+            throw new BrowserConnectionFailed("No webSocketDebuggerUrl found at {$url}/json/version");
+        }
+
+        return $webSocketUrl;
+    }
+
+    /**
+     * Launch a new Chrome for a single image; it is closed again afterwards.
+     */
+    public function launchBrowser(): Browser
+    {
         $binary = (string) config('og-image.chrome.path');
 
         $browserFactory = new BrowserFactory($binary);
 
-        $browser = $browserFactory->createBrowser([
+        return $browserFactory->createBrowser([
             'customFlags' => config('og-image.chrome.flags'),
         ]);
+    }
 
-        $page = $browser->createPage();
+    /**
+     * Clean up after a screenshot, also when it failed. A browser we launched
+     * is closed; a running Chrome we connected to is shared, so only our tab
+     * is closed and the browser keeps running for the next image.
+     */
+    public function releaseBrowser(Browser $browser, ?Page $page = null): void
+    {
+        if ($browser instanceof ProcessAwareBrowser) {
+            $browser->close();
 
+            return;
+        }
+
+        try {
+            $page?->close();
+        } finally {
+            $browser->getConnection()->disconnect();
+        }
+    }
+
+    /**
+     * Load the HTML into the page, wait for its images and fonts, and take the screenshot.
+     */
+    protected function renderScreenshot(Page $page, string $html, ?string $path = null): ?string
+    {
         $page->setHtml(html: $html, timeout: 10000, eventName: Page::LOAD);
         $page->setViewport(config('og-image.width'), config('og-image.height'));
         $page->evaluate($this->injectJs());
@@ -206,8 +306,6 @@ class OgImage
         } else {
             $screenshot->saveToFile($path);
         }
-
-        $browser->close();
 
         return $data;
     }
