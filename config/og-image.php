@@ -11,6 +11,11 @@ return [
     'height' => 630,
 
     'chrome' => [
+        // Connect to an already running Chrome instead of launching one for every image, which is
+        // faster. Its DevTools address, e.g. http://127.0.0.1:9222 (or a ws://.../devtools/browser/...
+        // URL), started with --remote-allow-origins=http://127.0.0.1 (see the README). Falls back to
+        // launching Chrome from the path below when it can't be reached.
+        'url' => env('CHROME_URL'),
         'path' => env('CHROME_PATH', 'chromium'),
         'flags' => [
             // '--disable-dev-shm-usage',
