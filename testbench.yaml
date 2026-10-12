@@ -1,0 +1,4 @@
+# The package for Testbench, and so for Larastan, which then knows the package views
+# (og-image::…) when it checks view names.
+providers:
+  - Backstage\OgImage\Laravel\OgImageServiceProvider
