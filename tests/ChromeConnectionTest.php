@@ -146,10 +146,17 @@ it('generates images in a running Chrome and keeps it running', function () use 
         $first = OgImage::takeScreenshot('<h1>first</h1>');
         $second = OgImage::takeScreenshot('<h1>second</h1>');
 
+        // Older chrome-php versions don't wait for Chrome to destroy a closed tab, so give it a moment.
+        $tabsAfter = retry(20, function () use ($tabs, $tabsBefore): int {
+            throw_unless(($count = $tabs()) === $tabsBefore, RuntimeException::class, "$count tabs open");
+
+            return $count;
+        }, 100, fn (): bool => true);
+
         expect($first)->toBeString()->not->toBeEmpty()
             ->and($second)->toBeString()->not->toBeEmpty()
             ->and($chrome->isRunning())->toBeTrue()
-            ->and($tabs())->toBe($tabsBefore);
+            ->and($tabsAfter)->toBe($tabsBefore);
     } finally {
         $chrome->stop();
         File::deleteDirectory($userDataDir);
