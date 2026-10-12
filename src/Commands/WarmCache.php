@@ -7,8 +7,10 @@ use Backstage\OgImage\Laravel\Crawler\ImageUrlCollector;
 use Backstage\OgImage\Laravel\Facades\OgImage;
 use Backstage\OgImage\Laravel\Jobs\GenerateImage;
 use Illuminate\Console\Command;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Spatie\Crawler\Crawler;
+use Symfony\Component\Console\Formatter\OutputFormatter;
 use Throwable;
 
 class WarmCache extends Command
@@ -29,6 +31,12 @@ class WarmCache extends Command
             return self::FAILURE;
         }
 
+        // Chrome won't start as root (without --no-sandbox), and the images would belong to root, so
+        // the web server couldn't write the cache anymore: it should run as the web server's user.
+        if ($this->runsAsRoot()) {
+            $this->components->warn('Running as root: run this as the user of the web server instead (e.g. sudo -u www-data php artisan og-image:warm), as Chrome refuses to start as root and the cached images would belong to root.');
+        }
+
         $url = (string) ($this->argument('url') ?: config('app.url'));
 
         $collector = $this->crawl($url);
@@ -47,7 +55,7 @@ class WarmCache extends Command
         $counts = ['generated' => 0, 'queued' => 0, 'cached' => 0, 'failed' => 0];
 
         foreach ($imageUrls as $imageUrl => $page) {
-            $status = $this->warm($imageUrl);
+            [$status, $error] = $this->warm($imageUrl);
 
             $counts[$status]++;
 
@@ -57,6 +65,10 @@ class WarmCache extends Command
                 'cached' => '<fg=gray>CACHED</>',
                 'failed' => '<fg=red;options=bold>FAILED</>',
             });
+
+            if ($error !== null) {
+                $this->line('  <fg=red>'.OutputFormatter::escape(Str::limit(strtok($error, "\n") ?: $error, 300)).'</>');
+            }
         }
 
         $this->newLine();
@@ -70,11 +82,12 @@ class WarmCache extends Command
     /**
      * Generate the image of a URL, or put it on the queue: generated, queued,
      * cached (already) or failed. The signature is checked here in both cases,
-     * so a bad URL fails the command rather than a job later on.
+     * so a bad URL fails the command rather than a job later on. A failure
+     * comes with its reason.
      *
-     * @return 'generated'|'queued'|'cached'|'failed'
+     * @return array{0: 'generated'|'queued'|'cached'|'failed', 1: ?string}
      */
-    protected function warm(string $imageUrl): string
+    protected function warm(string $imageUrl): array
     {
         try {
             if (! OgImage::isSignedImageUrl($imageUrl)) {
@@ -82,24 +95,34 @@ class WarmCache extends Command
             }
 
             if (OgImage::isImageUrlCached($imageUrl)) {
-                return 'cached';
+                return ['cached', null];
             }
 
             if (! $this->option('sync')) {
                 GenerateImage::dispatch($imageUrl);
 
-                return 'queued';
+                return ['queued', null];
             }
 
-            return OgImage::createImageFromUrl($imageUrl) ? 'generated' : 'cached';
+            return [OgImage::createImageFromUrl($imageUrl) ? 'generated' : 'cached', null];
         } catch (Throwable $e) {
             report($e);
 
-            return 'failed';
+            return ['failed', $e->getMessage()];
         }
     }
 
-    /** Crawl the pages of the site at the URL (robots.txt aside: it's our own site) and collect their images. */
+    protected function runsAsRoot(): bool
+    {
+        return function_exists('posix_geteuid') && posix_geteuid() === 0;
+    }
+
+    /**
+     * Crawl the pages of the site at the URL and collect their images. It's an
+     * own site, often a staging site that keeps search engines out, so whatever
+     * its robots say is ignored: robots.txt, the X-Robots-Tag header, the robots
+     * meta tag and rel="nofollow" on links.
+     */
     protected function crawl(string $url): ImageUrlCollector
     {
         $collector = new ImageUrlCollector;
@@ -108,7 +131,8 @@ class WarmCache extends Command
             ->setCrawlObserver($collector)
             ->setCrawlProfile(new CrawlInternalPages($url))
             ->setConcurrency(max(1, (int) $this->option('concurrency')))
-            ->ignoreRobots();
+            ->ignoreRobots()
+            ->acceptNofollowLinks();
 
         if ($this->option('limit')) {
             $crawler->setTotalCrawlLimit((int) $this->option('limit'));
