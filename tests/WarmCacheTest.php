@@ -1,5 +1,6 @@
 <?php
 
+use Backstage\OgImage\Laravel\Commands\WarmCache;
 use Backstage\OgImage\Laravel\Crawler\CrawlInternalPages;
 use Backstage\OgImage\Laravel\Crawler\ImageUrlCollector;
 use Backstage\OgImage\Laravel\Facades\OgImage;
@@ -249,6 +250,42 @@ it('crawls the site whatever its robots say, as it is an own site, like a stagin
         $this->artisan('og-image:warm', ['url' => $url.'/index.html', '--sync' => true])
             ->expectsOutputToContain('found 2 images')
             ->expectsOutputToContain('2 generated, 0 already cached, 0 failed')
+            ->assertSuccessful();
+    } finally {
+        $server->stop();
+        File::deleteDirectory($root);
+    }
+});
+
+it('says why an image failed', function (): void {
+    [$url, $server, $root] = servePages([
+        '/index.html' => page(str_replace('Home', 'Tampered', imageUrl('Home'))),
+    ]);
+
+    try {
+        $this->artisan('og-image:warm', ['url' => $url.'/index.html', '--sync' => true])
+            ->expectsOutputToContain('Not a validly signed image URL')
+            ->assertFailed();
+    } finally {
+        $server->stop();
+        File::deleteDirectory($root);
+    }
+});
+
+it('warns when it runs as root, where Chrome does not start', function (): void {
+    $this->app->bind(WarmCache::class, fn () => new class extends WarmCache
+    {
+        protected function runsAsRoot(): bool
+        {
+            return true;
+        }
+    });
+
+    [$url, $server, $root] = servePages(['/index.html' => page(imageUrl('Home'))]);
+
+    try {
+        $this->artisan('og-image:warm', ['url' => $url.'/index.html', '--sync' => true])
+            ->expectsOutputToContain('Running as root')
             ->assertSuccessful();
     } finally {
         $server->stop();
