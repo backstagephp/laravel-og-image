@@ -37,8 +37,8 @@ function imageUrl(string $title): string
     return OgImage::url(['title' => $title]);
 }
 
-/** Serve the pages (path => HTML) on a free port with PHP's built-in server; returns its URL and the process. */
-function servePages(array $pages): array
+/** Serve the pages (path => HTML) on a free port with PHP's built-in server, with the headers; returns its URL and the process. */
+function servePages(array $pages, array $headers = []): array
 {
     $root = sys_get_temp_dir().'/og-image-site-'.uniqid();
 
@@ -51,8 +51,13 @@ function servePages(array $pages): array
     $port = (int) substr(strrchr(stream_socket_get_name($socket, false), ':'), 1);
     fclose($socket);
 
-    // Without a router, PHP's server answers a missing file with index.html.
-    file_put_contents($root.'/router.php', '<?php if (is_file(__DIR__.parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH))) { return false; } http_response_code(404);');
+    // Without a router, PHP's server answers a missing file with index.html, and sends no headers of our own.
+    file_put_contents($root.'/router.php', '<?php
+        $file = __DIR__.parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH);
+        if (! is_file($file)) { http_response_code(404); return; }
+        foreach ('.var_export($headers, true).' as $header) { header($header); }
+        header("Content-Type: ".(str_ends_with($file, ".txt") ? "text/plain" : "text/html"));
+        readfile($file);');
 
     $server = new Process([PHP_BINARY, '-S', '127.0.0.1:'.$port, '-t', $root, $root.'/router.php']);
     $server->start();
@@ -229,4 +234,24 @@ it('generates the image of its url on the configured queue', function (): void {
 
     expect(OgImage::isImageUrlCached($url))->toBeTrue()
         ->and($this->screenshots)->toBe(1);
+});
+
+it('crawls the site whatever its robots say, as it is an own site, like a staging site', function (): void {
+    [$url, $server, $root] = servePages([
+        '/robots.txt' => "User-agent: *\nDisallow: /",
+        '/index.html' => '<!DOCTYPE html><html><head><meta name="robots" content="noindex, nofollow">'
+            .'<meta property="og:image" content="'.e(imageUrl('Home')).'"></head>'
+            .'<body><a href="/about.html" rel="nofollow">About</a></body></html>',
+        '/about.html' => page(imageUrl('About')),
+    ], ['X-Robots-Tag: noindex, nofollow']);
+
+    try {
+        $this->artisan('og-image:warm', ['url' => $url.'/index.html', '--sync' => true])
+            ->expectsOutputToContain('found 2 images')
+            ->expectsOutputToContain('2 generated, 0 already cached, 0 failed')
+            ->assertSuccessful();
+    } finally {
+        $server->stop();
+        File::deleteDirectory($root);
+    }
 });

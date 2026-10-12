@@ -99,7 +99,12 @@ class WarmCache extends Command
         }
     }
 
-    /** Crawl the pages of the site at the URL (robots.txt aside: it's our own site) and collect their images. */
+    /**
+     * Crawl the pages of the site at the URL and collect their images. It's an
+     * own site, often a staging site that keeps search engines out, so whatever
+     * its robots say is ignored: robots.txt, the X-Robots-Tag header, the robots
+     * meta tag and rel="nofollow" on links.
+     */
     protected function crawl(string $url): ImageUrlCollector
     {
         $collector = new ImageUrlCollector;
@@ -108,7 +113,8 @@ class WarmCache extends Command
             ->setCrawlObserver($collector)
             ->setCrawlProfile(new CrawlInternalPages($url))
             ->setConcurrency(max(1, (int) $this->option('concurrency')))
-            ->ignoreRobots();
+            ->ignoreRobots()
+            ->acceptNofollowLinks();
 
         if ($this->option('limit')) {
             $crawler->setTotalCrawlLimit((int) $this->option('limit'));
