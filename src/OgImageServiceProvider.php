@@ -3,6 +3,7 @@
 namespace Backstage\OgImage\Laravel;
 
 use Backstage\OgImage\Laravel\Commands\ClearCache;
+use Backstage\OgImage\Laravel\Commands\WarmCache;
 use Backstage\OgImage\Laravel\View\Components\OgImageComponent;
 use Illuminate\Support\Facades\Blade;
 use Spatie\LaravelPackageTools\Commands\InstallCommand;
@@ -18,7 +19,7 @@ class OgImageServiceProvider extends PackageServiceProvider
             ->hasRoute('web')
             ->hasConfigFile()
             ->hasViews()
-            ->hasCommand(ClearCache::class)
+            ->hasCommands([ClearCache::class, WarmCache::class])
             ->hasInstallCommand(function (InstallCommand $command): void {
                 $command
                     ->publishConfigFile()
