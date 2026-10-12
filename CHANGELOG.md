@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-og-image` will be documented in this file.
 
+## v1.3.0 - 2026-10-12
+
+### What's Changed
+
+* Take the screenshot in the format of the configured extension by @markvaneijk in https://github.com/backstagephp/laravel-og-image/pull/54
+* Connect to a running Chrome instead of launching one for every image by @markvaneijk in https://github.com/backstagephp/laravel-og-image/pull/55
+
+**Full Changelog**: https://github.com/backstagephp/laravel-og-image/compare/v1.2.1...v1.3.0
+
 ## v1.2.1 - 2026-10-11
 
 ### What's Changed
