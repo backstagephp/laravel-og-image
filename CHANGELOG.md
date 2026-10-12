@@ -2,6 +2,15 @@
 
 All notable changes to `laravel-og-image` will be documented in this file.
 
+## v1.4.0 - 2026-10-12
+
+### What's Changed
+
+* Let Larastan boot the package, so PHPStan knows its views by @markvaneijk in https://github.com/backstagephp/laravel-og-image/pull/57
+* Add og-image:warm to generate the images of all pages in advance by @markvaneijk in https://github.com/backstagephp/laravel-og-image/pull/56
+
+**Full Changelog**: https://github.com/backstagephp/laravel-og-image/compare/v1.3.0...v1.4.0
+
 ## v1.3.0 - 2026-10-12
 
 ### What's Changed
