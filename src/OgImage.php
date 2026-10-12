@@ -29,9 +29,39 @@ class OgImage
         return config('og-image.extension');
     }
 
+    /**
+     * The format Chrome takes the screenshot in, following the configured
+     * extension: png, jpeg (for jpg/jpeg) or webp.
+     */
+    public function getImageFormat(): string
+    {
+        return match (strtolower($this->getImageExtension())) {
+            'jpg', 'jpeg' => 'jpeg',
+            'webp' => 'webp',
+            default => 'png',
+        };
+    }
+
     public function getImageMimeType(): string
     {
-        return 'image/'.$this->getImageExtension();
+        return 'image/'.$this->getImageFormat();
+    }
+
+    /**
+     * The options for Chrome's screenshot: the format, plus the quality (0-100)
+     * for the lossy formats, jpeg and webp.
+     *
+     * @return array{format: string, quality?: int}
+     */
+    public function getScreenshotOptions(): array
+    {
+        $format = $this->getImageFormat();
+
+        if ($format === 'png') {
+            return ['format' => $format];
+        }
+
+        return ['format' => $format, 'quality' => (int) config('og-image.quality', 90)];
     }
 
     public function getStorageDisk(): FilesystemAdapter
@@ -197,7 +227,7 @@ class OgImage
         $page->setViewport(config('og-image.width'), config('og-image.height'));
         $page->evaluate($this->injectJs());
 
-        $screenshot = $page->screenshot();
+        $screenshot = $page->screenshot($this->getScreenshotOptions());
 
         $data = null;
 

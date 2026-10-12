@@ -5,6 +5,8 @@ return [
 
     'extension' => 'jpg', // jpg, png, webp
 
+    'quality' => 90, // 0-100, for jpg and webp
+
     'width' => 1200,
     'height' => 630,
 
