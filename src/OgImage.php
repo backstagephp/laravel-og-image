@@ -373,21 +373,31 @@ class OgImage
      */
     public function createImageFromUrl(string $url): bool
     {
-        $request = Request::create($url);
-
-        if (! $this->isImageUrl($url) || ! URL::hasValidSignature($request)) {
+        if (! $this->isSignedImageUrl($url)) {
             throw new InvalidArgumentException("Not a validly signed image URL: {$url}");
         }
 
-        $filename = $this->getRequestImageFilename($request);
-
-        if ($this->getStorageImageFileExists($filename)) {
+        if ($this->isImageUrlCached($url)) {
             return false;
         }
 
-        $this->saveImage($this->renderHtml($request->query()), $filename);
+        $request = Request::create($url);
+
+        $this->saveImage($this->renderHtml($request->query()), $this->getRequestImageFilename($request));
 
         return true;
+    }
+
+    /** Whether a URL is an image URL of this application with a valid signature. */
+    public function isSignedImageUrl(string $url): bool
+    {
+        return $this->isImageUrl($url) && URL::hasValidSignature(Request::create($url));
+    }
+
+    /** Whether the image of an image URL is cached already. */
+    public function isImageUrlCached(string $url): bool
+    {
+        return $this->getStorageImageFileExists($this->getRequestImageFilename(Request::create($url)));
     }
 
     public function getResponse(Request $request): Response

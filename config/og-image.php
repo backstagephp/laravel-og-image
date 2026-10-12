@@ -28,6 +28,12 @@ return [
         ],
     ],
 
+    // Where og-image:warm puts the images to generate (null: the default connection and queue).
+    'queue' => [
+        'connection' => env('OG_IMAGE_QUEUE_CONNECTION'),
+        'name' => env('OG_IMAGE_QUEUE'),
+    ],
+
     // The cache location to use.
     'storage' => [
         'disk' => 'public',

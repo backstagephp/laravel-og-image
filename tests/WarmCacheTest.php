@@ -3,8 +3,10 @@
 use Backstage\OgImage\Laravel\Crawler\CrawlInternalPages;
 use Backstage\OgImage\Laravel\Crawler\ImageUrlCollector;
 use Backstage\OgImage\Laravel\Facades\OgImage;
+use Backstage\OgImage\Laravel\Jobs\GenerateImage;
 use GuzzleHttp\Psr7\Uri;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\Process\Process;
 
@@ -120,13 +122,13 @@ it('crawls the site and generates the images of its pages', function (): void {
     ]);
 
     try {
-        $this->artisan('og-image:warm', ['url' => $url.'/index.html'])
+        $this->artisan('og-image:warm', ['url' => $url.'/index.html', '--sync' => true])
             ->expectsOutputToContain('found 2 images')
             ->expectsOutputToContain('2 generated, 0 already cached, 0 failed')
             ->assertSuccessful();
 
         // The second time, everything is in the cache already.
-        $this->artisan('og-image:warm', ['url' => $url.'/index.html'])
+        $this->artisan('og-image:warm', ['url' => $url.'/index.html', '--sync' => true])
             ->expectsOutputToContain('0 generated, 2 already cached, 0 failed')
             ->assertSuccessful();
 
@@ -143,7 +145,7 @@ it('fails when an image can not be generated', function (): void {
     ]);
 
     try {
-        $this->artisan('og-image:warm', ['url' => $url.'/index.html'])
+        $this->artisan('og-image:warm', ['url' => $url.'/index.html', '--sync' => true])
             ->expectsOutputToContain('0 generated, 0 already cached, 1 failed')
             ->assertFailed();
     } finally {
@@ -178,7 +180,7 @@ it('warns about pages it can not crawl, without failing', function (): void {
     ]);
 
     try {
-        $this->artisan('og-image:warm', ['url' => $url.'/index.html'])
+        $this->artisan('og-image:warm', ['url' => $url.'/index.html', '--sync' => true])
             ->expectsOutputToContain('Could not crawl '.$url.'/missing.html')
             ->expectsOutputToContain('1 generated, 0 already cached, 0 failed')
             ->assertSuccessful();
@@ -186,4 +188,45 @@ it('warns about pages it can not crawl, without failing', function (): void {
         $server->stop();
         File::deleteDirectory($root);
     }
+});
+
+it('puts the images that are not cached yet on the queue by default', function (): void {
+    Queue::fake();
+
+    OgImage::createImageFromUrl($cached = imageUrl('About'));
+
+    [$url, $server, $root] = servePages([
+        '/index.html' => page($home = imageUrl('Home'), '<a href="/about.html">About</a> <a href="/broken.html">Broken</a>'),
+        '/about.html' => page($cached),
+        '/broken.html' => page(str_replace('Home', 'Tampered', $home)),
+    ]);
+
+    try {
+        $this->artisan('og-image:warm', ['url' => $url.'/index.html'])
+            ->expectsOutputToContain('1 queued, 1 already cached, 1 failed')
+            ->assertFailed();
+
+        Queue::assertPushed(GenerateImage::class, 1);
+        Queue::assertPushed(GenerateImage::class, fn (GenerateImage $job): bool => $job->url === $home);
+        expect($this->screenshots)->toBe(1);
+    } finally {
+        $server->stop();
+        File::deleteDirectory($root);
+    }
+});
+
+it('generates the image of its url on the configured queue', function (): void {
+    config(['og-image.queue.connection' => 'redis', 'og-image.queue.name' => 'images']);
+
+    $job = new GenerateImage($url = imageUrl('Hello'));
+
+    expect($job->connection)->toBe('redis')
+        ->and($job->queue)->toBe('images')
+        ->and($job->uniqueId())->toBe((new GenerateImage($url))->uniqueId())
+        ->and($job->uniqueId())->not->toBe((new GenerateImage(imageUrl('Bye')))->uniqueId());
+
+    $job->handle();
+
+    expect(OgImage::isImageUrlCached($url))->toBeTrue()
+        ->and($this->screenshots)->toBe(1);
 });
