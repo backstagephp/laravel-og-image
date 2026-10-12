@@ -14,8 +14,10 @@ use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View;
 use Illuminate\View\ComponentAttributeBag;
+use InvalidArgumentException;
 use Throwable;
 
 class OgImage
@@ -340,18 +342,57 @@ class OgImage
         return $data;
     }
 
+    /**
+     * The HTML of an image: the view its parameters ask for when that exists,
+     * otherwise the package's template.
+     */
+    public function renderHtml(array $parameters): string
+    {
+        $view = isset($parameters['view']) && is_string($parameters['view']) && view()->exists($parameters['view'])
+            ? $parameters['view']
+            : 'og-image::template';
+
+        return View::make($view, $parameters)->render();
+    }
+
+    /**
+     * Whether a URL points at the image route of this application, like the
+     * og:image URLs this package makes. It doesn't check the signature.
+     */
+    public function isImageUrl(string $url): bool
+    {
+        return '/'.Request::create($url)->path() === route('og-image.file', [], false);
+    }
+
+    /**
+     * Generate and cache the image of a signed image URL, the way a visit to it
+     * would, so no visitor or crawler has to wait for it later. Returns false
+     * when the image was cached already.
+     *
+     * @throws InvalidArgumentException when the URL is not a validly signed image URL
+     */
+    public function createImageFromUrl(string $url): bool
+    {
+        $request = Request::create($url);
+
+        if (! $this->isImageUrl($url) || ! URL::hasValidSignature($request)) {
+            throw new InvalidArgumentException("Not a validly signed image URL: {$url}");
+        }
+
+        $filename = $this->getRequestImageFilename($request);
+
+        if ($this->getStorageImageFileExists($filename)) {
+            return false;
+        }
+
+        $this->saveImage($this->renderHtml($request->query()), $filename);
+
+        return true;
+    }
+
     public function getResponse(Request $request): Response
     {
-        if (
-            $request->view &&
-            view()->exists($request->view)
-        ) {
-            $html = View::make($request->view, $request->all())
-                ->render();
-        } else {
-            $html = View::make('og-image::template', $request->all())
-                ->render();
-        }
+        $html = $this->renderHtml($request->all());
 
         if ($request->route()->getName() == 'og-image.html') {
             return response($html, 200, [
