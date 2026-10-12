@@ -69,3 +69,35 @@ it('creates its storage folders on the configured disk, not in the working direc
 
     rmdir($workingDirectory);
 });
+
+it('takes the screenshot in the format of the configured extension', function (string $extension, string $format, string $mimeType): void {
+    config(['og-image.extension' => $extension]);
+
+    expect(OgImage::getImageFormat())->toBe($format)
+        ->and(OgImage::getImageMimeType())->toBe($mimeType)
+        ->and(OgImage::getScreenshotOptions()['format'])->toBe($format);
+})->with([
+    ['png', 'png', 'image/png'],
+    ['jpg', 'jpeg', 'image/jpeg'],
+    ['jpeg', 'jpeg', 'image/jpeg'],
+    ['webp', 'webp', 'image/webp'],
+]);
+
+it('passes the quality for lossy formats only', function (): void {
+    config(['og-image.extension' => 'jpg', 'og-image.quality' => 75]);
+    expect(OgImage::getScreenshotOptions())->toBe(['format' => 'jpeg', 'quality' => 75]);
+
+    config(['og-image.extension' => 'png']);
+    expect(OgImage::getScreenshotOptions())->toBe(['format' => 'png']);
+});
+
+it('writes the image in the configured format', function (string $extension, string $magic): void {
+    config(['og-image.extension' => $extension]);
+
+    $image = OgImage::takeScreenshot('<h1>title</h1>');
+
+    expect(substr((string) $image, 0, strlen($magic)))->toBe($magic);
+})->with([
+    ['png', "\x89PNG"],
+    ['jpg', "\xFF\xD8\xFF"],
+])->skip(fn (): bool => ! $hasChrome(), 'No Chrome/Chromium binary available');
