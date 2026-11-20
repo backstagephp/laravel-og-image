@@ -10,3 +10,9 @@ parameters:
     checkOctaneCompatibility: true
     checkModelProperties: true
     noEnvCallsOutsideOfConfig: false
+    ignoreErrors:
+        # WarmCache::crawl() calls the API of spatie/crawler 8 or 9, whichever is installed.
+        -
+            message: '#Spatie\\+Crawler\\+Crawler#'
+            path: src/Commands/WarmCache.php
+            reportUnmatched: false
