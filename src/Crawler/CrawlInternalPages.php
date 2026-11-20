@@ -11,9 +11,16 @@ use Spatie\Crawler\CrawlProfiles\CrawlInternalUrls;
  */
 class CrawlInternalPages extends CrawlInternalUrls
 {
-    public function shouldCrawl(UriInterface $url): bool
+    /**
+     * Untyped, so it fits both spatie/crawler 8 (a UriInterface) and 9 (a string).
+     *
+     * @param  UriInterface|string  $url
+     */
+    public function shouldCrawl($url): bool
     {
-        $extension = strtolower(pathinfo($url->getPath(), PATHINFO_EXTENSION));
+        $path = $url instanceof UriInterface ? $url->getPath() : (string) parse_url($url, PHP_URL_PATH);
+
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
         return parent::shouldCrawl($url) && in_array($extension, ['', 'html', 'htm', 'php'], true);
     }

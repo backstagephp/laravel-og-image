@@ -8,11 +8,13 @@ use GuzzleHttp\Exception\RequestException;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\UriInterface;
 use Spatie\Crawler\CrawlObservers\CrawlObserver;
-use Spatie\Crawler\ResponseWithCachedBody;
 
 /**
  * Collects the og:image and twitter:image URLs of the pages the crawler visits
  * (see the og-image:warm command).
+ *
+ * The observer methods leave their parameters untyped, so they fit both
+ * spatie/crawler 8 (PSR-7 URLs and responses) and 9 (strings and a CrawlResponse).
  */
 class ImageUrlCollector extends CrawlObserver
 {
@@ -24,32 +26,44 @@ class ImageUrlCollector extends CrawlObserver
 
     public int $crawledPages = 0;
 
-    public function crawled(
-        UriInterface $url,
-        ResponseInterface $response,
-        ?UriInterface $foundOnUrl = null,
-        ?string $linkText = null,
-    ): void {
+    /** Whether the crawl was stopped (Ctrl+C) before it was done. */
+    public bool $interrupted = false;
+
+    /** @param  UriInterface|string  $url */
+    public function crawled($url, $response, $progressOrFoundOnUrl = null, $linkText = null): void
+    {
         $this->crawledPages++;
 
-        if (! str_contains($response->getHeaderLine('Content-Type'), 'html')) {
+        if ($response instanceof ResponseInterface) {
+            $contentType = $response->getHeaderLine('Content-Type');
+            $body = fn (): string => method_exists($response, 'getCachedBody') && $response->getCachedBody() !== null
+                ? $response->getCachedBody()
+                : (string) $response->getBody();
+        } else {
+            $contentType = (string) $response->header('Content-Type');
+            $body = fn (): string => $response->body();
+        }
+
+        if (! str_contains($contentType, 'html')) {
             return;
         }
 
-        $html = $response instanceof ResponseWithCachedBody && $response->getCachedBody() !== null
-            ? $response->getCachedBody()
-            : (string) $response->getBody();
+        $html = $body();
 
         foreach (self::imageUrls($html) as $imageUrl) {
             $this->imageUrls[$imageUrl] ??= (string) $url;
         }
     }
 
+    /** @param  UriInterface|string  $url */
     public function crawlFailed(
-        UriInterface $url,
+        $url,
         RequestException $requestException,
-        ?UriInterface $foundOnUrl = null,
-        ?string $linkText = null,
+        $progressOrFoundOnUrl = null,
+        $foundOnUrlOrLinkText = null,
+        $linkText = null,
+        $resourceType = null,
+        $transferStats = null,
     ): void {
         $this->failedPages[(string) $url] = $requestException->getMessage();
     }

@@ -6,6 +6,7 @@ use Backstage\OgImage\Laravel\Crawler\CrawlInternalPages;
 use Backstage\OgImage\Laravel\Crawler\ImageUrlCollector;
 use Backstage\OgImage\Laravel\Facades\OgImage;
 use Backstage\OgImage\Laravel\Jobs\GenerateImage;
+use GuzzleHttp\RequestOptions;
 use Illuminate\Console\Command;
 use InvalidArgumentException;
 use Spatie\Crawler\Crawler;
@@ -32,6 +33,12 @@ class WarmCache extends Command
         $url = (string) ($this->argument('url') ?: config('app.url'));
 
         $collector = $this->crawl($url);
+
+        if ($collector->interrupted) {
+            $this->components->error('The crawl was interrupted, so no images were warmed.');
+
+            return self::FAILURE;
+        }
 
         // A page that can't be crawled (a broken link, say) is worth a warning, but only an image
         // that can't be generated fails the command, so it can run in a deploy without breaking it.
@@ -104,17 +111,51 @@ class WarmCache extends Command
     {
         $collector = new ImageUrlCollector;
 
-        $crawler = Crawler::create()
-            ->setCrawlObserver($collector)
-            ->setCrawlProfile(new CrawlInternalPages($url))
-            ->setConcurrency(max(1, (int) $this->option('concurrency')))
-            ->ignoreRobots();
+        // spatie/crawler 8 and 9 are both supported (9 is the one that installs on PHP 8.6), each with its own API.
+        $profile = new CrawlInternalPages($url);
+        $concurrency = max(1, (int) $this->option('concurrency'));
+        $limit = $this->option('limit') ? (int) $this->option('limit') : null;
 
-        if ($this->option('limit')) {
-            $crawler->setTotalCrawlLimit((int) $this->option('limit'));
+        if (method_exists(Crawler::class, 'startCrawling')) {
+            $crawler = Crawler::create()
+                ->setCrawlObserver($collector)
+                ->setCrawlProfile($profile)
+                ->setConcurrency($concurrency)
+                ->ignoreRobots();
+
+            if ($limit !== null) {
+                $crawler->setTotalCrawlLimit($limit);
+            }
+
+            $crawler->startCrawling($url);
+
+            return $collector;
         }
 
-        $crawler->startCrawling($url);
+        // spatie/crawler 9 follows redirects by default; 8 did not.
+        $crawler = Crawler::create($url, [RequestOptions::ALLOW_REDIRECTS => false])
+            ->addObserver($collector)
+            ->crawlProfile($profile)
+            ->concurrency($concurrency)
+            ->ignoreRobots();
+
+        if ($limit !== null) {
+            $crawler->limit($limit);
+        }
+
+        // 9 catches Ctrl+C and returns what it has so far, where 8 just stopped. It also leaves the
+        // signal handlers reset, which would cost a queue worker calling this command its own.
+        $handlers = function_exists('pcntl_signal_get_handler')
+            ? [SIGINT => pcntl_signal_get_handler(SIGINT), SIGTERM => pcntl_signal_get_handler(SIGTERM)]
+            : [];
+
+        try {
+            $collector->interrupted = $crawler->start()->name === 'Interrupted';
+        } finally {
+            foreach ($handlers as $signal => $handler) {
+                pcntl_signal($signal, $handler);
+            }
+        }
 
         return $collector;
     }
